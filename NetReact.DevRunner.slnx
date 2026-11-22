@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/NetReact.DevRunner.Cli/NetReact.DevRunner.Cli.csproj" />
+    <Project Path="src/NetReact.DevRunner.Core/NetReact.DevRunner.Core.csproj" />
+    <Project Path="src/NetReact.DevRunner.Infrastructure/NetReact.DevRunner.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/NetReact.DevRunner.Tests/NetReact.DevRunner.Tests.csproj" />
+  </Folder>
+</Solution>

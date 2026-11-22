@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net11.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <PackAsTool>true</PackAsTool>
+    <PackageId>NetReact.DevRunner</PackageId>
+    <ToolCommandName>netreact</ToolCommandName>
+    <Version>0.4.0</Version>
+    <Authors>Tanish Gupta</Authors>
+    <Description>Run ASP.NET Core and React development services from one terminal.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Spectre.Console" Version="0.57.2" />
+    <PackageReference Include="Spectre.Console.Cli" Version="0.57.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NetReact.DevRunner.Infrastructure\NetReact.DevRunner.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

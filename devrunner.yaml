@@ -1,0 +1,10 @@
+version: 1
+services:
+  backend:
+    workingDirectory: ./backend
+    command: dotnet
+    args: [run]
+  frontend:
+    workingDirectory: ./frontend
+    command: npm
+    args: [run, dev]
