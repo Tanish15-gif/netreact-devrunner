@@ -15,7 +15,7 @@
     <RepositoryUrl>https://github.com/Tanish15-gif/netreact-devrunner</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>dotnet-tool;net11.0;aspnetcore;react;vite;cli;process-supervision;hot-reload</PackageTags>
-    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageReadmeFile>NUGET.md</PackageReadmeFile>
   </PropertyGroup>
 
   <ItemGroup>
@@ -26,6 +26,7 @@
     <None Include="../../THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="/" />
     <None Include="../../devrunner.example.yaml" Pack="true" PackagePath="/" />
     <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <None Include="../../docs/NUGET.md" Pack="true" PackagePath="/" />
     <None Include="../../CONTRIBUTING.md;../../CODE_OF_CONDUCT.md;../../SECURITY.md" Pack="true" PackagePath="/" />
     <PackageReference Include="Spectre.Console" Version="0.57.2" />
     <PackageReference Include="Spectre.Console.Cli" Version="0.57.2" />
