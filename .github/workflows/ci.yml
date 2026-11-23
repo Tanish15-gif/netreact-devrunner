@@ -1,0 +1,43 @@
+name: Build and verify package
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '11.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: dotnet restore NetReact.DevRunner.slnx
+      - run: dotnet build NetReact.DevRunner.slnx -c Release --no-restore
+      - run: dotnet pack src/NetReact.DevRunner.Cli -c Release --no-build -o artifacts/nuget
+      - name: Verify the installed tool and documented configuration
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          dotnet tool install --tool-path ./artifacts/tools NetReact.DevRunner --source ./artifacts/nuget
+          $tool = Join-Path (Resolve-Path ./artifacts/tools) $(if ($IsWindows) { 'netreact.exe' } else { 'netreact' })
+          $app = New-Item -ItemType Directory -Path ./artifacts/sample
+          dotnet new web --no-restore -o "$app/Backend"
+          New-Item -ItemType Directory -Path "$app/frontend" | Out-Null
+          '{"scripts":{"dev":"node --version"}}' | Set-Content "$app/frontend/package.json"
+          Copy-Item ./devrunner.example.yaml "$app/devrunner.yaml"
+          Push-Location $app
+          try {
+            & $tool validate
+            & $tool doctor
+            & $tool start frontend --plain
+          } finally { Pop-Location }

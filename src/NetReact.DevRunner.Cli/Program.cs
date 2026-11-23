@@ -2,6 +2,9 @@
 using Spectre.Console.Cli;
 using NetReact.DevRunner.Cli;
 
+if (args is [NetReact.DevRunner.Infrastructure.ServiceProcessGroup.HelperArgument, .. var childArgs])
+    return NetReact.DevRunner.Infrastructure.ServiceProcessGroup.RunHelper(childArgs);
+
 if (args.Length >= 3 && args[0] == "start" && args[^2] == "--" && args[^1] == "watch")
 {
     args = [.. args[..^2], "--watch"];
@@ -27,6 +30,8 @@ app.Configure(config =>
     config.SetApplicationVersion(NetReactHelp.Version);
     config.AddCommand<InitCommand>("init")
         .WithDescription(NetReactHelp.InitDescription);
+    config.AddCommand<DoctorCommand>("doctor")
+        .WithDescription("Check service programs, SDK, and npm scripts.");
     config.AddCommand<ValidateCommand>("validate")
         .WithDescription(NetReactHelp.ValidateDescription);
     config.AddCommand<StartCommand>("start")

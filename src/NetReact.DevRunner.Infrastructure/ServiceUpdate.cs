@@ -13,6 +13,8 @@ public enum ServiceUpdateKind
     Notice,
     Starting,
     Started,
+    WaitingForReady,
+    Ready,
     Output,
     ErrorOutput,
     Stopping,

@@ -58,6 +58,12 @@ public static class YamlConfigFile
                 yield return $"Service '{name}' needs a command.";
             }
 
+            if (service.ReadyUrl is not null && (!Uri.TryCreate(service.ReadyUrl, UriKind.Absolute, out var uri)
+                || uri.Scheme is not ("http" or "https")))
+            {
+                yield return $"Service '{name}' needs an absolute HTTP or HTTPS readyUrl.";
+            }
+
             if (service.Args?.Contains(null) == true)
             {
                 yield return $"Service '{name}' has a null argument.";

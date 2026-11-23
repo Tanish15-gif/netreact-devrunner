@@ -31,8 +31,16 @@ artifacts/
 # Test results
 [Tt]est[Rr]esult*/
 *.trx
-tests/
-examples/
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+
+# Local development projects and machine-specific service configuration
+/examples/
+/tests/
+/devrunner.yaml
 
 # Publish output
 [Pp]ublish/

@@ -24,7 +24,9 @@ internal sealed class ServiceDashboard
     private readonly Page _commands = new(null, "NetReact");
     private readonly DashboardLog _shortcuts = CreateShortcutLog(watching: false);
     private readonly DashboardLog _watchShortcuts = CreateShortcutLog(watching: true);
-    private readonly string _configDirectory;
+    private readonly string _configPath;
+    private string _configDirectory => Path.GetDirectoryName(_configPath)!;
+    private string? _search;
     private readonly StringBuilder _input = new();
     private int _selected;
     private int _revision;
@@ -32,9 +34,9 @@ internal sealed class ServiceDashboard
     private bool _showShortcuts;
 
     public ServiceDashboard(
-        IReadOnlyDictionary<string, ServiceConfig?> services, string configDirectory, bool watch)
+        IReadOnlyDictionary<string, ServiceConfig?> services, string configPath, bool watch)
     {
-        _configDirectory = configDirectory;
+        _configPath = configPath;
         _pages = services.Select(service => new Page(
                 service.Key, GetTitle(service.Key), DotNetLaunch.IsWatching(service.Value!, watch)))
             .Append(_commands).ToArray();
@@ -142,6 +144,26 @@ internal sealed class ServiceDashboard
 
     private void HandleKey(ConsoleKeyInfo key, bool control, ChannelWriter<ServiceRequest> requests, ScreenSize size)
     {
+        if (_search is not null)
+        {
+            if (key.Key == ConsoleKey.Escape)
+            {
+                _search = null;
+                Current.Log.Filter("");
+                Current.Log.Follow();
+            }
+            else if (key.Key == ConsoleKey.Backspace && _search.Length > 0)
+                Current.Log.Filter(_search = _search[..^1]);
+            else if (!Scroll(Current.Log, key.Key, size) && !char.IsControl(key.KeyChar) && _search.Length < 128)
+                Current.Log.Filter(_search += key.KeyChar);
+            return;
+        }
+        if (!_showShortcuts && key.KeyChar == '/' && (Current != _commands || _input.Length == 0))
+        {
+            _search = "";
+            return;
+        }
+
         if (_showShortcuts)
         {
             if (key.Key == ConsoleKey.Escape || key.KeyChar == '?')
@@ -303,21 +325,23 @@ internal sealed class ServiceDashboard
                     Write(NetReactHelp.Version);
                     break;
                 case ["--info"]:
-                    Write(NetReactHelp.Info(_configDirectory));
+                    Write(NetReactHelp.Info(_configDirectory, _configPath));
                     break;
                 case ["urls"]:
                     foreach (var page in _pages[..^1])
                     {
-                        var address = page.Status == ServiceUpdateKind.Started
-                            ? page.Url ?? "waiting for a listening URL"
-                            : StatusLabel(page.Status);
-                        Write($"{page.Title}: {address}");
+                        if (page.Status is ServiceUpdateKind.Started or ServiceUpdateKind.WaitingForReady or ServiceUpdateKind.Ready
+                            && page.Urls.Count > 0)
+                        {
+                            foreach (var url in page.Urls) Write($"{page.Title}: {url}");
+                        }
+                        else Write($"{page.Title}: {StatusLabel(page.Status)} (no detected URL)");
                     }
                     break;
                 case ["status"]:
                     foreach (var page in _pages[..^1])
                     {
-                        Write($"{page.Title}: {StatusLabel(page.Status)}");
+                        Write($"{page.Service}: {StatusLabel(page.Status)}");
                     }
                     break;
                 case ["restart"] or ["restart", "all"]:
@@ -361,14 +385,14 @@ internal sealed class ServiceDashboard
     {
         try
         {
-            var config = YamlConfigFile.Read(Path.Combine(_configDirectory, "devrunner.yaml"));
+            var config = YamlConfigFile.Read(_configPath);
             var errors = YamlConfigFile.GetErrors(config, _configDirectory).ToArray();
-            Write(errors.Length == 0 ? "devrunner.yaml is valid." : string.Join('\n', errors));
+            Write(errors.Length == 0 ? $"{Path.GetFileName(_configPath)} is valid." : string.Join('\n', errors));
         }
         catch (Exception exception) when (
             exception is IOException or UnauthorizedAccessException or InvalidDataException)
         {
-            Write($"Could not read devrunner.yaml. {exception.Message}");
+            Write($"Could not read {_configPath}. {exception.Message}");
         }
     }
 
@@ -408,20 +432,20 @@ internal sealed class ServiceDashboard
             }
 
             if (update.Kind is ServiceUpdateKind.Starting or ServiceUpdateKind.Started or
-                ServiceUpdateKind.Stopping or ServiceUpdateKind.Stopped or ServiceUpdateKind.Failure)
+                ServiceUpdateKind.Stopping or ServiceUpdateKind.Stopped or ServiceUpdateKind.Failure or
+                ServiceUpdateKind.Ready or ServiceUpdateKind.WaitingForReady)
             {
                 page.Status = update.Kind;
                 if (update.Kind == ServiceUpdateKind.Starting)
                 {
-                    page.Url = null;
+                    page.Urls.Clear();
                 }
             }
 
-            var address = ListeningUrl.Match(line);
-            if (address.Success)
-            {
-                page.Url = address.Groups[1].Value;
-            }
+            foreach (Match address in ListeningUrl.Matches(line))
+                page.Urls.Add(address.Groups[1].Value);
+            if (update.Kind == ServiceUpdateKind.Ready && line.StartsWith("Ready at ", StringComparison.Ordinal))
+                page.Urls.Add(line["Ready at ".Length..]);
 
             var style = update.Kind is ServiceUpdateKind.ErrorOutput or ServiceUpdateKind.Failure
                 ? ErrorStyle : Style.Plain;
@@ -499,6 +523,8 @@ internal sealed class ServiceDashboard
 
     private IRenderable RenderPrompt(ScreenSize size)
     {
+        if (_search is not null)
+            return Line($"{size.Margin}/ {_search}", TitleStyle);
         var empty = _input.Length == 0;
         var input = empty ? "Type help for commands" : _input.ToString();
         const string prefix = " > ";
@@ -522,6 +548,8 @@ internal sealed class ServiceDashboard
             return Line($"{size.Margin}Ctrl+C to exit", MutedStyle);
         }
 
+        if (_search is not null)
+            return Line($"{size.Margin}{log.Count} matching rows   Esc close", MutedStyle);
         var first = _showShortcuts ? "Esc close" : "? shortcuts";
         var detail = _showShortcuts ? "PgUp/PgDn scroll" : "< > tabs";
         var state = _showShortcuts ? "" : !log.IsFollowing ? "Paused  |  End live"
@@ -552,7 +580,7 @@ internal sealed class ServiceDashboard
     private int GetLogHeight(ScreenSize size) => Math.Max(0,
         size.Height - 1 - (size.HasSpacer ? 1 : 0) - (size.HasFooter ? 1 : 0) - (ShowPrompt(size) ? 1 : 0));
 
-    private bool ShowPrompt(ScreenSize size) => Current == _commands && size.Height >= (_showShortcuts ? 7 : 3);
+    private bool ShowPrompt(ScreenSize size) => (Current == _commands || _search is not null) && size.Height >= (_showShortcuts ? 7 : 3);
 
     private static ScreenSize GetSize() => new(
         Math.Max(4, AnsiConsole.Profile.Width - 1), Math.Max(1, AnsiConsole.Profile.Height - 1));
@@ -566,6 +594,8 @@ internal sealed class ServiceDashboard
 
     private static string StatusLabel(ServiceUpdateKind kind) => kind switch
     {
+        ServiceUpdateKind.Ready => "Ready",
+        ServiceUpdateKind.WaitingForReady => "Starting",
         ServiceUpdateKind.Started => "Running",
         ServiceUpdateKind.Stopping => "Stopping",
         ServiceUpdateKind.Stopped => "Stopped",
@@ -591,7 +621,7 @@ internal sealed class ServiceDashboard
         public string Title { get; } = title;
         public bool Watching { get; } = watching;
         public ServiceUpdateKind Status { get; set; }
-        public string? Url { get; set; }
+        public HashSet<string> Urls { get; } = new(StringComparer.Ordinal);
         public DashboardLog Log { get; } = new();
     }
 

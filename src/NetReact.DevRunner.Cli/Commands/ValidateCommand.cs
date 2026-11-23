@@ -1,25 +1,31 @@
 using NetReact.DevRunner.Infrastructure;
-using Spectre.Console;
 using Spectre.Console.Cli;
 
 namespace NetReact.DevRunner.Cli.Commands;
 
-public sealed class ValidateCommand : Command
+public class ValidateCommand : Command<ConfigSettings>
 {
-    public override int Execute(CommandContext context, CancellationToken cancellationToken)
+    protected virtual bool CheckTools => false;
+
+    public override int Execute(CommandContext context, ConfigSettings settings, CancellationToken cancellationToken)
     {
-        const string configFileName = "devrunner.yaml";
-        var currentDirectory = Directory.GetCurrentDirectory();
-        var configPath = Path.Combine(currentDirectory, configFileName);
+        var configFileName = settings.Config;
 
         try
         {
+            var configPath = Path.GetFullPath(configFileName);
+            var currentDirectory = Path.GetDirectoryName(configPath)!;
             var config = YamlConfigFile.Read(configPath);
             var errors = YamlConfigFile.GetErrors(config, currentDirectory).ToArray();
 
+            if (errors.Length == 0 && CheckTools)
+            {
+                errors = ServiceDiagnostics.Check(config!, currentDirectory).ToArray();
+            }
+
             if (errors.Length == 0)
             {
-                AnsiConsole.MarkupLine("[green]devrunner.yaml is valid.[/]");
+                Console.WriteLine(CheckTools ? "Service checks passed." : $"{configFileName} is valid.");
                 return 0;
             }
 
@@ -32,11 +38,11 @@ public sealed class ValidateCommand : Command
         }
         catch (FileNotFoundException)
         {
-            System.Console.Error.WriteLine("devrunner.yaml was not found. Run netreact init first.");
+            System.Console.Error.WriteLine($"{configFileName} was not found. Run netreact init or specify --config.");
             return 1;
         }
         catch (Exception exception) when (
-            exception is IOException or UnauthorizedAccessException or InvalidDataException)
+            exception is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException)
         {
             System.Console.Error.WriteLine($"Could not read {configFileName}. {exception.Message}");
             return 1;

@@ -8,6 +8,7 @@ internal sealed class DashboardLog
     private const int LineLimit = 2000;
     private readonly Queue<Entry> _history = new();
     private readonly List<Entry> _rows = [];
+    private string _filter = "";
     private int _width;
     private int? _top;
     private RenderOptions? _renderOptions;
@@ -36,6 +37,16 @@ internal sealed class DashboardLog
                 _top = Math.Max(0, top - removeCount);
             }
         }
+    }
+
+    public void Filter(string query)
+    {
+        if (query == _filter) return;
+        _filter = query;
+        _rows.Clear();
+        if (_width > 0)
+            foreach (var entry in _history) Wrap(entry);
+        Follow();
     }
 
     public void Resize(int width)
@@ -83,6 +94,7 @@ internal sealed class DashboardLog
 
     private void Wrap(Entry entry)
     {
+        if (_filter.Length > 0 && !entry.Text.Contains(_filter, StringComparison.OrdinalIgnoreCase)) return;
         if (new Segment(entry.Text).CellCount() <= _width)
         {
             _rows.Add(entry);

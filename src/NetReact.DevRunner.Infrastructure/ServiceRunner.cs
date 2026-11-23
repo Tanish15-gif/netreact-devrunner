@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Threading.Channels;
 using NetReact.DevRunner.Core;
 
@@ -9,7 +8,8 @@ namespace NetReact.DevRunner.Infrastructure;
 public static class ServiceRunner
 {
     private static readonly TimeSpan ShutdownTimeout = TimeSpan.FromSeconds(3);
-    private const uint CtrlBreakEvent = 1;
+    private static readonly HttpClient ProbeClient = new(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false })
+    { Timeout = TimeSpan.FromSeconds(2) };
 
     public static async Task<int> RunAsync
     (
@@ -18,7 +18,8 @@ public static class ServiceRunner
         bool watch,
         ChannelReader<ServiceRequest>? requests,
         Action<ServiceUpdate> report,
-        CancellationToken cancellationToken
+        CancellationToken cancellationToken,
+        string? serviceHostAssembly = null
     )
     {
         var running = new Dictionary<string, RunningService>();
@@ -61,16 +62,17 @@ public static class ServiceRunner
                 cancellationToken.ThrowIfCancellationRequested();
                 var exited = running.Values.First(service => service.ExitCode == firstExit);
                 var code = await firstExit;
+                var outcome = code == 0 ? ServiceUpdateKind.Stopped : ServiceUpdateKind.Failure;
                 if (requests is null)
                 {
-                    report(new(exited.Name, ServiceUpdateKind.Failure,
+                    report(new(exited.Name, outcome,
                         $"Exited with code {code}. Stopping the other services."));
-                    return 1;
+                    return code;
                 }
 
-                await StopAsync([exited], allowGracePeriod: false, report);
+                await StopAsync([exited], report);
                 RemoveStopped(exited);
-                report(new(exited.Name, ServiceUpdateKind.Failure,
+                report(new(exited.Name, outcome,
                     $"Exited with code {code}. Ctrl+D starts this service again."));
             }
         }
@@ -84,13 +86,13 @@ public static class ServiceRunner
             requestsLifetime.Cancel();
             try
             {
-                await StopAsync(running.Values.ToArray(), cancellationToken.IsCancellationRequested, report);
+                await StopAsync(running.Values.ToArray(), report);
             }
             finally
             {
                 foreach (var service in running.Values)
                 {
-                    service.Process.Dispose();
+                    service.Dispose();
                 }
             }
         }
@@ -100,12 +102,19 @@ public static class ServiceRunner
             report(new(name, ServiceUpdateKind.Starting, "Starting..."));
             try
             {
-                var child = StartService(name, services[name]!, configDirectory, watch, report);
+                var child = StartService(name, services[name]!, configDirectory, watch, report,
+                    serviceHostAssembly ?? System.Reflection.Assembly.GetEntryAssembly()!.Location);
                 running.Add(name, child);
+                child.Process.StandardInput.BaseStream.WriteByte(1);
                 child.Process.StandardInput.Close();
                 child.Process.BeginOutputReadLine();
                 child.Process.BeginErrorReadLine();
                 report(new(name, ServiceUpdateKind.Started, $"Started (PID {child.Process.Id})."));
+                if (services[name]!.ReadyUrl is string url)
+                {
+                    report(new(name, ServiceUpdateKind.WaitingForReady, $"Waiting for {url}"));
+                    child.Probe = ProbeAsync(name, url, report, child.ProbeLifetime.Token);
+                }
                 return true;
             }
             catch (Exception exception) when (
@@ -123,7 +132,7 @@ public static class ServiceRunner
             var startAfterStop = request.Action == ServiceAction.Restart
                 || selected.All(service => service.Process.HasExited);
 
-            await StopAsync(selected, OperatingSystem.IsWindows(), report);
+            await StopAsync(selected, report);
             foreach (var service in selected)
             {
                 RemoveStopped(service);
@@ -147,7 +156,7 @@ public static class ServiceRunner
             if (service.Process.HasExited)
             {
                 running.Remove(service.Name);
-                service.Process.Dispose();
+                service.Dispose();
             }
         }
     }
@@ -158,7 +167,8 @@ public static class ServiceRunner
         ServiceConfig service,
         string configDirectory,
         bool watch,
-        Action<ServiceUpdate> report)
+        Action<ServiceUpdate> report,
+        string serviceHostAssembly)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -189,6 +199,7 @@ public static class ServiceRunner
             startInfo.ArgumentList.Add(argument!);
         }
 
+        ServiceProcessGroup.Prepare(startInfo, serviceHostAssembly);
         var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
         var exit = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -226,16 +237,17 @@ public static class ServiceRunner
                 throw new InvalidOperationException("The process did not start.");
             }
 
-            return new RunningService(name, process, exit.Task);
+            return new RunningService(name, process, exit.Task, new ServiceProcessGroup(process));
         }
         catch
         {
+            try { process.StandardInput.Close(); } catch (InvalidOperationException) { }
             process.Dispose();
             throw;
         }
     }
 
-    private static (string Node, string NpmCli) FindWindowsNpm()
+    internal static (string Node, string NpmCli) FindWindowsNpm()
     {
         var path = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
         foreach (var entry in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
@@ -258,77 +270,71 @@ public static class ServiceRunner
             "Could not locate npm alongside node.exe. Add your Node.js installation folder to PATH.");
     }
 
-    private static async Task StopAsync(
-        IReadOnlyList<RunningService> running,
-        bool allowGracePeriod,
-        Action<ServiceUpdate> report)
+    private static async Task ProbeAsync(string name, string url, Action<ServiceUpdate> report, CancellationToken token)
     {
-        foreach (var service in running.Where(service => !service.Process.HasExited))
+        try
         {
-            report(new(service.Name, ServiceUpdateKind.Stopping, "Stopping..."));
-        }
-
-        if (allowGracePeriod)
-        {
-            if (OperatingSystem.IsWindows())
+            while (true)
             {
-                foreach (var service in running.Where(service => !service.Process.HasExited))
+                try
                 {
-                    // A targeted break event reaches the service group, including console children.
-                    GenerateConsoleCtrlEvent(CtrlBreakEvent, (uint)service.Process.Id);
+                    using var response = await ProbeClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, token);
+                    if (response.IsSuccessStatusCode)
+                    {
+                        report(new(name, ServiceUpdateKind.Ready, $"Ready at {url}"));
+                        return;
+                    }
                 }
-            }
-
-            try
-            {
-                // Console-attached applications may also receive Ctrl+C.
-                await Task.WhenAll(running.Select(service => service.ExitCode)).WaitAsync(ShutdownTimeout);
-            }
-            catch (TimeoutException)
-            {
-                // Force a stop for services that are still running.
+                catch (HttpRequestException) { }
+                catch (OperationCanceledException) when (!token.IsCancellationRequested) { }
+                await Task.Delay(500, token);
             }
         }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+    }
+
+    private static async Task StopAsync(IReadOnlyList<RunningService> running, Action<ServiceUpdate> report)
+    {
+        foreach (var service in running)
+        {
+            service.ProbeLifetime.Cancel();
+            if (service.Group.IsActive() || !service.Process.HasExited)
+            {
+                report(new(service.Name, ServiceUpdateKind.Stopping, "Stopping..."));
+                service.Group.RequestStop();
+            }
+        }
+        await Task.WhenAll(running.Select(service => service.Probe));
+        var elapsed = Stopwatch.StartNew();
+        while (elapsed.Elapsed < ShutdownTimeout && running.Any(service => !service.Process.HasExited || service.Group.IsActive()))
+            await Task.Delay(50);
 
         foreach (var service in running)
         {
             try
             {
-                if (!service.Process.HasExited)
-                {
-                    service.Process.Kill(entireProcessTree: true);
-                }
+                // Keep control of descendants even when their original parent has already exited.
+                if (service.Group.IsActive()) service.Group.ForceStop();
+                if (!service.Process.HasExited) service.Process.Kill(entireProcessTree: true);
+                await service.Process.WaitForExitAsync().WaitAsync(ShutdownTimeout);
+                report(new(service.Name, ServiceUpdateKind.Stopped, "Stopped."));
             }
-            catch (InvalidOperationException) when (service.Process.HasExited)
+            catch (Exception ex) when (ex is Win32Exception or TimeoutException or InvalidOperationException or AggregateException)
             {
-                // The process exited between the check and the kill.
+                report(new(service.Name, ServiceUpdateKind.Failure, $"Could not finish shutdown. {ex.Message}"));
             }
-            catch (Exception exception) when (exception is Win32Exception or InvalidOperationException or AggregateException)
-            {
-                report(new(service.Name, ServiceUpdateKind.Failure,
-                    $"Could not stop the process tree. {exception.Message}"));
-            }
-        }
-
-        using var drainTimeout = new CancellationTokenSource(ShutdownTimeout);
-        try
-        {
-            await Task.WhenAll(running.Select(service => service.Process.WaitForExitAsync(drainTimeout.Token)));
-        }
-        catch (OperationCanceledException) when (drainTimeout.IsCancellationRequested)
-        {
-            report(new(null, ServiceUpdateKind.Notice, "Timed out waiting for services or their output streams."));
-        }
-
-        foreach (var service in running.Where(service => service.Process.HasExited))
-        {
-            report(new(service.Name, ServiceUpdateKind.Stopped, "Stopped."));
         }
     }
 
-    [DllImport("kernel32.dll", ExactSpelling = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GenerateConsoleCtrlEvent(uint controlEvent, uint processGroupId);
-
-    private sealed record RunningService(string Name, Process Process, Task<int> ExitCode);
+    private sealed record RunningService(string Name, Process Process, Task<int> ExitCode, ServiceProcessGroup Group) : IDisposable
+    {
+        public CancellationTokenSource ProbeLifetime { get; } = new();
+        public Task Probe { get; set; } = Task.CompletedTask;
+        public void Dispose()
+        {
+            Group.Dispose();
+            Process.Dispose();
+            ProbeLifetime.Dispose();
+        }
+    }
 }

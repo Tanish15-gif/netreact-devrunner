@@ -10,6 +10,7 @@ internal static class NetReactHelp
 
     public static string Shortcuts(bool watching) => $"""
         Left / Right   Switch between tabs.
+        /              Search this tab's log. Esc returns to live output.
         Up / Down      Scroll one line.
         PgUp / PgDn    Scroll one page.
         Home / End     Jump to the oldest log or return to live output.
@@ -21,11 +22,11 @@ internal static class NetReactHelp
 
     public static string Version => typeof(NetReactHelp).Assembly.GetName().Version!.ToString(3);
 
-    public static string Info(string directory) => $"""
+    public static string Info(string directory, string? configPath = null) => $"""
         NetReact DevRunner {Version}
         Runtime: {RuntimeInformation.FrameworkDescription}
         OS: {RuntimeInformation.OSDescription}
-        Config: {Path.Combine(directory, "devrunner.yaml")}
+        Config: {configPath ?? Path.Combine(directory, "devrunner.yaml")}
         """;
 
     public static bool TryGetHelp(string[] args, out string text)
@@ -44,6 +45,7 @@ internal static class NetReactHelp
             "" => Overview,
             "init" => Init,
             "validate" => Validate,
+            "doctor" => "Usage: netreact doctor [--config <path>]\nCheck each service executable, the .NET SDK, and configured npm scripts.",
             "start" => Start,
             _ => ""
         };
@@ -63,6 +65,7 @@ internal static class NetReactHelp
         Commands:
           init       {InitDescription}
           validate   {ValidateDescription}
+          doctor     Check service programs, SDK, and npm scripts.
           start      {StartDescription}
           help       Show general help or help for a command.
 
@@ -83,12 +86,13 @@ internal static class NetReactHelp
         Usage: netreact init
 
         Creates a starter devrunner.yaml for an ASP.NET Core backend and a React frontend.
-        Set each service's workingDirectory, command, and args to match your project.
+        Detects one ASP.NET Core project and one npm dev script up to three folders deep.
+        Check workingDirectory when a service is missing or several candidates exist.
         An existing devrunner.yaml is preserved.
         """;
 
     private const string Validate = """
-        Usage: netreact validate
+        Usage: netreact validate [--config <path>]
 
         Reads devrunner.yaml in the current folder and checks schema version, service commands,
         and working directories. Relative paths are resolved from the config folder.
@@ -96,11 +100,13 @@ internal static class NetReactHelp
         """;
 
     private static readonly string Start = $"""
-        Usage: netreact start [--watch] [--plain]
+        Usage: netreact start [SERVICE] [--config <path>] [--watch] [--plain]
 
         Launches services from devrunner.yaml. .NET apps use dotnet run by default.
 
         Options:
+          SERVICE   Start one service by its YAML name, e.g. netreact start backend.
+          --config  Read a different YAML file. Service paths are relative to that file.
           --watch   Run .NET apps with dotnet watch run.
                     netreact start -- watch is also supported.
           --plain   Stream labeled logs to terminal scrollback. Used automatically

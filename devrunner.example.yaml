@@ -1,0 +1,14 @@
+# Place this file beside your backend and frontend folders as devrunner.yaml.
+version: 1
+services:
+  backend:
+    workingDirectory: ./Backend       # Folder containing the web .csproj
+    command: dotnet
+    args: [run]
+    # If your API serves this endpoint, uncomment it to enable a readiness check.
+    # readyUrl: http://localhost:5083/health
+
+  frontend:
+    workingDirectory: ./frontend      # Folder containing package.json
+    command: npm
+    args: [run, dev]

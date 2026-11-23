@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Runtime.InteropServices;
 using NetReact.DevRunner.Core;
 using NetReact.DevRunner.Infrastructure;
 using Spectre.Console;
@@ -8,8 +9,12 @@ namespace NetReact.DevRunner.Cli.Commands;
 
 public sealed class StartCommand : AsyncCommand<StartCommand.Settings>
 {
-    public sealed class Settings : CommandSettings
+    public sealed class Settings : ConfigSettings
     {
+        [CommandArgument(0, "[SERVICE]")]
+        [Description("Start only this configured service.")]
+        public string? Service { get; init; }
+
         [CommandOption("--watch")]
         [Description("Run .NET apps with dotnet watch run.")]
         public bool Watch { get; init; }
@@ -22,25 +27,37 @@ public sealed class StartCommand : AsyncCommand<StartCommand.Settings>
     public override async Task<int> ExecuteAsync(
         CommandContext context, Settings settings, CancellationToken cancellationToken)
     {
-        const string configFileName = "devrunner.yaml";
-        var configDirectory = Directory.GetCurrentDirectory();
-        var configPath = Path.Combine(configDirectory, configFileName);
+        var configFileName = settings.Config;
+        string configPath;
+        string configDirectory;
 
         DevRunnerConfig? config;
         try
         {
+            configPath = Path.GetFullPath(configFileName);
+            configDirectory = Path.GetDirectoryName(configPath)!;
             config = YamlConfigFile.Read(configPath);
         }
         catch (FileNotFoundException)
         {
-            Console.Error.WriteLine("devrunner.yaml was not found. Run netreact init first.");
+            Console.Error.WriteLine($"{configFileName} was not found. Run netreact init or specify --config.");
             return 1;
         }
         catch (Exception exception) when (
-            exception is IOException or UnauthorizedAccessException or InvalidDataException)
+            exception is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException)
         {
             Console.Error.WriteLine($"Could not read {configFileName}. {exception.Message}");
             return 1;
+        }
+
+        if (settings.Service is string selected && config?.Services is { Count: > 0 } available)
+        {
+            if (!available.TryGetValue(selected, out var service))
+            {
+                Console.Error.WriteLine($"Unknown service '{selected}'. Available: {string.Join(", ", available.Keys)}.");
+                return 1;
+            }
+            config.Services = new() { [selected] = service };
         }
 
         var errors = YamlConfigFile.GetErrors(config, configDirectory).ToArray();
@@ -55,6 +72,12 @@ public sealed class StartCommand : AsyncCommand<StartCommand.Settings>
         }
 
         using var shutdown = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        using var terminate = OperatingSystem.IsWindows() ? null
+            : PosixSignalRegistration.Create(PosixSignal.SIGTERM, signal =>
+            {
+                signal.Cancel = true;
+                shutdown.Cancel();
+            });
         ConsoleCancelEventHandler onCancel = (_, args) =>
         {
             args.Cancel = true;
@@ -76,7 +99,7 @@ public sealed class StartCommand : AsyncCommand<StartCommand.Settings>
             if (!settings.Plain && capabilities.Ansi && capabilities.Interactive
                 && !Console.IsInputRedirected && !Console.IsOutputRedirected)
             {
-                var dashboard = new ServiceDashboard(services, configDirectory, settings.Watch);
+                var dashboard = new ServiceDashboard(services, configPath, settings.Watch);
                 return await dashboard.RunAsync(
                     (requests, report) => ServiceRunner.RunAsync(
                         services, configDirectory, settings.Watch, requests, report, shutdown.Token),

@@ -9,6 +9,7 @@ public sealed class DevRunnerConfig
 public sealed class ServiceConfig
 {
     public string? WorkingDirectory { get; set; }
+    public string? ReadyUrl { get; set; }
     public string? Command { get; set; }
     public List<string?>? Args { get; set; }
 }
