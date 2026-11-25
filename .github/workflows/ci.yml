@@ -16,7 +16,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '11.0.x'
+          dotnet-version: |
+            10.0.x
+            11.0.x
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -28,8 +30,15 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
-          dotnet tool install --tool-path ./artifacts/tools NetReact.DevRunner --source ./artifacts/nuget
-          $tool = Join-Path (Resolve-Path ./artifacts/tools) $(if ($IsWindows) { 'netreact.exe' } else { 'netreact' })
+          $shim = if ($IsWindows) { 'netreact.exe' } else { 'netreact' }
+          foreach ($major in 10, 11) {
+            $install = "./artifacts/tools-$major"
+            dotnet tool install --tool-path $install NetReact.DevRunner --source ./artifacts/nuget --framework "net$major.0"
+            $tool = Join-Path (Resolve-Path $install) $shim
+            if ((& $tool --info | Out-String) -notmatch "Runtime: \.NET $major\.") {
+              throw "Expected the .NET $major tool"
+            }
+          }
           $app = New-Item -ItemType Directory -Path ./artifacts/sample
           dotnet new web --no-restore -o "$app/Backend"
           New-Item -ItemType Directory -Path "$app/frontend" | Out-Null
@@ -38,6 +47,20 @@ jobs:
           Push-Location $app
           try {
             & $tool validate
+            & $tool doctor
+            & $tool start frontend --plain
+          } finally { Pop-Location }
+          $angularApp = New-Item -ItemType Directory -Path ./artifacts/angular-sample
+          dotnet new web --no-restore -o "$angularApp/Backend"
+          New-Item -ItemType Directory -Path "$angularApp/frontend" | Out-Null
+          '{"scripts":{"start":"node --version"}}' | Set-Content "$angularApp/frontend/package.json"
+          '{}' | Set-Content "$angularApp/frontend/angular.json"
+          Push-Location $angularApp
+          try {
+            & $tool init
+            if ((Get-Content devrunner.yaml -Raw) -notmatch 'args: \[start\]') {
+              throw 'Expected npm start for an Angular workspace'
+            }
             & $tool doctor
             & $tool start frontend --plain
           } finally { Pop-Location }

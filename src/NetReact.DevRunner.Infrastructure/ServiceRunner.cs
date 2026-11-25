@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 using System.Threading.Channels;
 using NetReact.DevRunner.Core;
 
@@ -8,6 +9,11 @@ namespace NetReact.DevRunner.Infrastructure;
 public static class ServiceRunner
 {
     private static readonly TimeSpan ShutdownTimeout = TimeSpan.FromSeconds(3);
+    private static readonly Regex PortConflict = new(
+        @"\bport\s+(?<port>[0-9]{1,5})\s+is already in use\b|"
+        + @"failed to bind to address https?://\S+:(?<port>[0-9]{1,5})\b.*address already in use|"
+        + @"EADDRINUSE: address already in use[^\r\n]*?:(?<port>[0-9]{1,5})\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
     private static readonly HttpClient ProbeClient = new(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false })
     { Timeout = TimeSpan.FromSeconds(2) };
 
@@ -202,6 +208,22 @@ public static class ServiceRunner
         ServiceProcessGroup.Prepare(startInfo, serviceHostAssembly);
         var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
         var exit = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var portConflictReported = 0;
+
+        void ReportOutput(ServiceUpdateKind kind, string? line)
+        {
+            if (line is null) return;
+            report(new(name, kind, line));
+            if (Volatile.Read(ref portConflictReported) != 0) return;
+
+            var conflict = PortConflict.Match(line);
+            if (conflict.Success && Interlocked.Exchange(ref portConflictReported, 1) == 0)
+            {
+                var port = conflict.Groups["port"].Value;
+                report(new(name, ServiceUpdateKind.ErrorOutput,
+                    $"Port {port} is already in use. Stop the process using it or configure a different port for {name}."));
+            }
+        }
 
         process.Exited += (_, _) =>
         {
@@ -215,20 +237,8 @@ public static class ServiceRunner
                 exit.TrySetCanceled();
             }
         };
-        process.OutputDataReceived += (_, args) =>
-        {
-            if (args.Data is string line)
-            {
-                report(new(name, ServiceUpdateKind.Output, line));
-            }
-        };
-        process.ErrorDataReceived += (_, args) =>
-        {
-            if (args.Data is string line)
-            {
-                report(new(name, ServiceUpdateKind.ErrorOutput, line));
-            }
-        };
+        process.OutputDataReceived += (_, args) => ReportOutput(ServiceUpdateKind.Output, args.Data);
+        process.ErrorDataReceived += (_, args) => ReportOutput(ServiceUpdateKind.ErrorOutput, args.Data);
 
         try
         {

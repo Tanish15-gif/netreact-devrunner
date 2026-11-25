@@ -1,19 +1,23 @@
 # NetReact DevRunner
 
-[![.NET 11.0](https://img.shields.io/badge/.NET-11.0-512BD4?style=flat-square)](https://dotnet.microsoft.com/download/dotnet/11.0) [![React](https://img.shields.io/badge/frontend-React-087EA4?style=flat-square)](https://react.dev/) [![MIT license](https://img.shields.io/badge/license-MIT-237A57?style=flat-square)](https://opensource.org/license/mit)
+[![.NET 10 and 11](https://img.shields.io/badge/.NET-10%20%7C%2011-512BD4?style=flat-square)](https://dotnet.microsoft.com/download) [![React](https://img.shields.io/badge/frontend-React-087EA4?style=flat-square)](https://react.dev/) [![Angular](https://img.shields.io/badge/frontend-Angular-DD0031?style=flat-square)](https://angular.dev/) [![MIT license](https://img.shields.io/badge/license-MIT-237A57?style=flat-square)](https://opensource.org/license/mit)
 
-Start your ASP.NET Core API and React dev server with one command. Each service has a scrollable log tab. Press **Ctrl+U** to see their listening addresses, or restart one service while the other keeps running.
+Start your ASP.NET Core API and React or Angular dev server with one command. Each service has a scrollable log tab. Press **Ctrl+U** to see their listening addresses, or restart one service while the other keeps running.
 
-[Install](#install) · [Set up your app](#set-up-your-own-app) · [YAML reference](#configuration-reference) · [CLI walkthrough](#cli-walkthrough) · [Troubleshooting](#troubleshooting)
+**Angular support in 0.6.0.** NetReact can detect an Angular CLI workspace, launch it alongside your ASP.NET Core API, and show its logs in a dedicated Angular tab.
+
+[Install](#install) · [Set up your app](#set-up-your-own-app) · [Angular](#angular-projects) · [YAML reference](#configuration-reference) · [CLI walkthrough](#cli-walkthrough) · [Troubleshooting](#troubleshooting)
 
 ## Install
 
-Install the .NET 11 SDK and the Node.js version your frontend requires. NetReact is a .NET tool. Install it once from your terminal:
+Install the .NET 10 or 11 SDK and the Node.js version your frontend requires. NetReact is a .NET tool. Install it once from your terminal:
 
 ```sh
-dotnet tool install --global NetReact.DevRunner
+dotnet tool install --global NetReact.DevRunner --version 0.6.0
 netreact --version
 ```
+
+Already installed? Close any active NetReact sessions and run `dotnet tool update --global NetReact.DevRunner --version 0.6.0`.
 
 ## Set up your own app
 
@@ -35,7 +39,7 @@ Portfolio/
 netreact init
 ```
 
-NetReact creates `devrunner.yaml` in the current folder. It looks up to three folder levels deep for an ASP.NET Core web project and a `package.json` with a `dev` script. When it finds one match for a service, it fills in that path for you. If it prints **check this path**, set that service's `workingDirectory` yourself. If a configuration already exists, open it directly.
+NetReact looks up to three folder levels deep for an ASP.NET Core web project and npm frontend projects. It detects a `dev` script or an Angular workspace with `angular.json` and a `start` script. If several frontends match, run `init` in an interactive terminal and pick one. If it prints **check this path**, set that service's `workingDirectory` yourself. If a configuration already exists, open it directly.
 
 For this layout, the backend runs in `./Backend` and the frontend runs in `./frontend`. See the annotated [configuration reference](#configuration-reference) or copy the YAML shown below into your application as `devrunner.yaml`.
 
@@ -57,6 +61,19 @@ netreact start
 ```
 
 This runs `dotnet run` for the sample backend and `npm run dev` for its frontend. To use .NET Hot Reload, start with `netreact start --watch`. To work on the backend alone, use `netreact start backend --watch`. A supported C# edit applies when you save.
+
+### Angular projects
+
+Run `netreact init` from your application root. NetReact detects Angular when a workspace contains `angular.json` and its `package.json` defines a `start` script. If that script runs `ng serve`, use this frontend entry under `services`:
+
+```yaml
+frontend:
+  workingDirectory: ./frontend
+  command: npm
+  args: [start]
+```
+
+If your Angular workspace is in another folder, replace `./frontend` in both `workingDirectory` and the install command. Then run `npm install --prefix ./frontend`, `netreact doctor`, and `netreact start`. Open the **Angular** tab for frontend logs. The **Services** box shows the detected URL, which is usually `http://localhost:4200/`. Type `restart frontend` in the **NetReact** tab to restart Angular while the API keeps running.
 
 ## Configuration reference
 
@@ -129,13 +146,14 @@ Press **Ctrl+D** here to stop only the frontend. Press it again to start it whil
 
 ### NetReact tab — manage the session
 
-Press **Ctrl+U** to open **NetReact** and list detected URLs. At the prompt, type `status` to see service states, `restart backend` to restart one service, or `restart all` to restart the session's services. Use the service key from your YAML, for example `restart api` if the key is `api`. Type `help` to see the session commands.
+The **Services** box sits below **Session activity** and shows live service states and listening URLs. Press **Ctrl+U** from a service tab to return to **NetReact**. A service shows **Fetching URL…** for the first eight seconds of a launch while NetReact looks for a listening address. URLs that appear later show up automatically.
+
+Type `clear` or `cls` to clear the session activity while services keep running. Use `restart backend` to restart one service, `restart all` to restart every service, or `help` for all session commands. On a service tab, the footer shows **Ctrl+D** to stop or start that service.
 
 ```text
-.NET  React  [NetReact]
-> urls
-.NET: http://localhost:5083
-React: http://localhost:5173/
+Services
+.NET              Running    http://localhost:5083
+Angular           Running    http://localhost:4200/
 ```
 
 To restart just the API, enter `restart backend` at this prompt. Then enter `status` to check the services. These commands run inside the session.
@@ -154,7 +172,7 @@ To find an earlier error, close the shortcuts panel, switch to the service tab, 
 | `/` then text | Filter the current tab's logs. Esc clears the search. |
 | Ctrl+D | Stop the selected service. Press again to start it. |
 | Ctrl+R | On a .NET Watch tab, restart that watcher. On other tabs, restart all services in the session. |
-| Ctrl+U | Show detected URLs in the NetReact tab. |
+| Ctrl+U | Return to NetReact to see service states and URLs. |
 | Ctrl+C | Stop all services and exit. |
 
 ## Other ways to run
@@ -174,7 +192,8 @@ To find an earlier error, close the shortcuts panel, switch to the service tab, 
 | Symptom | What to check |
 | --- | --- |
 | `devrunner.yaml` cannot be found | Run `netreact --info` to see the expected path. Open the app root or pass `--config` to `start`. |
-| npm reports a missing `package.json` or `dev` script | Check the frontend's `workingDirectory` and the `scripts` section of its manifest. Run `netreact doctor` after editing. |
+| npm reports a missing `package.json` or npm script | Check the frontend's `workingDirectory` and the `dev` or `start` script in its manifest. Run `netreact doctor` after editing. |
+| A service reports a port in use | Check its log for the requested port. Close the process using it or pick a different port in the service's launch arguments. |
 | PowerShell blocks `npm.ps1` | Use `npm.cmd` in the terminal, for example `npm.cmd install --prefix ./frontend`. Keep `command: npm` in YAML for the standard Windows Node installation. |
-| Ctrl+U is still waiting for a URL | Read the service tab for startup errors or a custom address message. NetReact recognizes the usual ASP.NET Core and Vite listening messages. |
+| Services shows No URL detected | Read the service tab for startup errors or a custom address message. NetReact recognizes the usual ASP.NET Core, Angular, and Vite listening messages. |
 | Windows denies access during a tool update | Exit running NetReact sessions with Ctrl+C, wait for the shell prompt, then retry the update from the same local package source. |

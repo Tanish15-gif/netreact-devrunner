@@ -5,7 +5,7 @@ From the repository root, use the .NET 11 SDK to build and exercise the CLI:
 ```sh
 dotnet restore NetReact.DevRunner.slnx
 dotnet build NetReact.DevRunner.slnx -c Release --no-restore
-dotnet run --project src/NetReact.DevRunner.Cli -c Release --no-build -- --help
+dotnet run --project src/NetReact.DevRunner.Cli -f net11.0 -c Release --no-build -- --help
 ```
 
 The Windows, Linux, and macOS CI jobs build the solution, pack and install the tool, and exercise the configuration template with a temporary application. To try the CLI on your own application, follow the [README setup guide](README.md#set-up-your-own-app).

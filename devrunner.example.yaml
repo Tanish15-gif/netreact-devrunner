@@ -11,4 +11,4 @@ services:
   frontend:
     workingDirectory: ./frontend      # Folder containing package.json
     command: npm
-    args: [run, dev]
+    args: [run, dev]                   # Use [start] for Angular projects with npm start

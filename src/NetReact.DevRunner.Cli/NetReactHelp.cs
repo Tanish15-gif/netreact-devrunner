@@ -16,7 +16,7 @@ internal static class NetReactHelp
         Home / End     Jump to the oldest log or return to live output.
         Ctrl+D         Stop the selected service. Press again to start it.
         Ctrl+R         {(watching ? "Restart this .NET watcher." : "Restart all configured services.")}
-        Ctrl+U         Show the server URLs in the NetReact tab.
+        Ctrl+U         Return to NetReact to see service states and URLs.
         Ctrl+C         Stop all services and exit.
         """;
 
@@ -56,7 +56,7 @@ internal static class NetReactHelp
 
     private static readonly string Overview = $"""
         NetReact DevRunner
-        Launch and supervise ASP.NET Core, React, and other local services from one terminal.
+        Launch and supervise ASP.NET Core, React, Angular, and other local services from one terminal.
 
         Usage:
           netreact <command> [options]
@@ -85,9 +85,10 @@ internal static class NetReactHelp
     private const string Init = """
         Usage: netreact init
 
-        Creates a starter devrunner.yaml for an ASP.NET Core backend and a React frontend.
-        Detects one ASP.NET Core project and one npm dev script up to three folders deep.
-        Check workingDirectory when a service is missing or several candidates exist.
+        Creates a starter devrunner.yaml for an ASP.NET Core backend and a React or Angular frontend.
+        Searches up to three folders deep for a web project and a frontend with npm run dev
+        or an Angular workspace with npm start. Prompts when there are multiple frontend projects.
+        Check workingDirectory when a service is missing or several backends match.
         An existing devrunner.yaml is preserved.
         """;
 

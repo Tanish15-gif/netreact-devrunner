@@ -2,17 +2,20 @@
   <img src="docs/netreact-devrunner.png" alt="NetReact DevRunner" width="800">
 </h1>
 
-[![.NET 11.0](https://img.shields.io/badge/.NET-11.0-512BD4?style=flat-square)](https://dotnet.microsoft.com/download/dotnet/11.0)
+[![.NET 10 and 11](https://img.shields.io/badge/.NET-10%20%7C%2011-512BD4?style=flat-square)](https://dotnet.microsoft.com/download)
 [![React](https://img.shields.io/badge/frontend-React-087EA4?style=flat-square)](https://react.dev/)
+[![Angular](https://img.shields.io/badge/frontend-Angular-DD0031?style=flat-square)](https://angular.dev/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-237A57?style=flat-square)](LICENSE)
 
-Run an ASP.NET Core API and a React dev server from one terminal. Switch between their logs with the arrow keys, press **Ctrl+U** to see both URLs, or restart just the backend while the frontend keeps running.
+Run an ASP.NET Core API and a React or Angular dev server from one terminal. Switch between their logs with the arrow keys, press **Ctrl+U** to see both URLs, or restart either service independently.
 
-[Install](#install-netreact) · [Set up your app](#set-up-your-own-app) · [YAML reference](#configuration-reference) · [Interactive CLI](#interactive-cli) · [Troubleshooting](#troubleshooting)
+**Angular support in 0.6.0.** NetReact can detect an Angular CLI workspace, start it alongside your ASP.NET Core API, and show its logs in a dedicated Angular tab.
+
+[Install](#install-netreact) · [Set up your app](#set-up-your-own-app) · [Angular](#angular-projects) · [YAML reference](#configuration-reference) · [Interactive CLI](#interactive-cli) · [Troubleshooting](#troubleshooting)
 
 ## Install NetReact
 
-You need the **.NET 11 SDK** to build the tool. For a React frontend, install npm and the Node.js version required by your application. Your backend also needs an SDK compatible with its project. Check your terminal with:
+Install the **.NET 10 or 11 SDK** to run the tool. Building both targets from source requires the .NET 11 SDK. Install npm and the Node.js version required by your frontend. Your backend also needs its own compatible SDK and runtime.
 
 ```sh
 dotnet --list-sdks
@@ -20,15 +23,24 @@ node --version
 npm --version
 ```
 
-From the **NetReact source repository** (the folder containing `NetReact.DevRunner.slnx`), build the package and install it as a global .NET tool:
+Once 0.6.0 is available on NuGet.org, install it from any terminal:
 
 ```sh
-dotnet pack ./src/NetReact.DevRunner.Cli/NetReact.DevRunner.Cli.csproj -c Release -o ./artifacts/nuget
-dotnet tool install --global NetReact.DevRunner --version 0.5.0 --source ./artifacts/nuget
+dotnet tool install --global NetReact.DevRunner --version 0.6.0
 netreact --version
 ```
 
-The last command should print `0.5.0`. This installation makes `netreact` available across your projects. Your application's `.csproj` needs no package reference. If you already have an older version installed, close active NetReact sessions and substitute `dotnet tool update` for `dotnet tool install` in the second command.
+If you already have NetReact installed, close any active sessions and run `dotnet tool update --global NetReact.DevRunner --version 0.6.0`.
+
+To test a local build, run these commands from the **NetReact source repository** (the folder containing `NetReact.DevRunner.slnx`):
+
+```sh
+dotnet pack ./src/NetReact.DevRunner.Cli/NetReact.DevRunner.Cli.csproj -c Release -o ./artifacts/nuget
+dotnet tool install --global NetReact.DevRunner --version 0.6.0 --source ./artifacts/nuget
+netreact --version
+```
+
+The last command should print `0.6.0`. This installation makes `netreact` available across your projects. Your application's `.csproj` needs no package reference. If you already have an older version installed, close active NetReact sessions and substitute `dotnet tool update` for `dotnet tool install` in the second command.
 
 ## Set up your own app
 
@@ -50,7 +62,7 @@ Portfolio/
 netreact init
 ```
 
-NetReact creates `devrunner.yaml` in the current folder. It looks up to three folder levels deep for an ASP.NET Core web project and a `package.json` with a `dev` script. When it finds one match for a service, it fills in that path for you. If it prints **check this path**, set that service's `workingDirectory` yourself. If a configuration already exists, open it directly.
+NetReact looks up to three folder levels deep for an ASP.NET Core web project and npm frontend projects. It detects a `dev` script or an Angular workspace with `angular.json` and a `start` script. If several frontends match, run `init` in an interactive terminal and pick one. If it prints **check this path**, set that service's `workingDirectory` yourself. If a configuration already exists, open it directly.
 
 For this layout, the backend runs in `./Backend` and the frontend runs in `./frontend`. See the annotated [configuration reference](#configuration-reference) or copy the [YAML template](devrunner.example.yaml) into your application as `devrunner.yaml`.
 
@@ -72,6 +84,27 @@ netreact start
 ```
 
 This runs `dotnet run` for the sample backend and `npm run dev` for its frontend. To use .NET Hot Reload, start with `netreact start --watch`. To work on the backend alone, use `netreact start backend --watch`. A supported C# edit applies when you save.
+
+### Angular projects
+
+Run `netreact init` from your application root. NetReact detects Angular when a workspace contains `angular.json` and its `package.json` defines a `start` script. For a standard Angular CLI workspace where that script runs `ng serve`, the frontend entry under `services` looks like this:
+
+```yaml
+frontend:
+  workingDirectory: ./frontend
+  command: npm
+  args: [start]
+```
+
+If your Angular workspace is in another folder, replace `./frontend` in both `workingDirectory` and the install command. Then install dependencies and start both services:
+
+```sh
+npm install --prefix ./frontend
+netreact doctor
+netreact start
+```
+
+Open the **Angular** tab for frontend logs. The **Services** box shows the detected URL, which is usually `http://localhost:4200/`. Use `args: [start, --, --port, "4300"]` to pass a custom port to Angular. Type `restart frontend` in the **NetReact** tab to restart Angular while the API keeps running.
 
 ## Configuration reference
 
@@ -129,9 +162,15 @@ Switch to **React** and open Vite's **Local** URL in your browser. This session 
 
 ### NetReact tab — manage the session
 
-Press **Ctrl+U** to open **NetReact** and list detected URLs. At the prompt, type `status` to see service states, `restart backend` to restart one service, or `restart all` to restart the session's services. Use the service key from your YAML, for example `restart api` if the key is `api`. Type `help` to see the session commands.
+The **Services** box sits below **Session activity** and shows live service states and listening URLs. Press **Ctrl+U** from a service tab to return to **NetReact**. A service shows **Fetching URL…** for the first eight seconds of a launch while NetReact looks for a listening address. URLs that appear later show up automatically.
 
-[![NetReact tab listing both server URLs and help for status, restart, and validate](docs/screenshots/netreact-tab.png)](https://github.com/user-attachments/assets/f31e31ec-d9a7-4eaf-ae33-8650872381ec)
+Type `clear` or `cls` to clear the session activity while services keep running. Use `restart backend` to restart one service, `restart all` to restart every service, or `help` for all session commands. On a service tab, the footer shows **Ctrl+D** to stop or start that service.
+
+```text
+Services
+.NET              Running    http://localhost:5083
+React             Running    http://localhost:5173/
+```
 
 ### Shortcuts — navigate, search, and stop
 
@@ -147,7 +186,7 @@ Press **?** to open the shortcuts for the current tab. Use an empty prompt on th
 | `/` then text | Filter the current tab's logs. Esc clears the search. |
 | Ctrl+D | Stop the selected service. Press again to start it. |
 | Ctrl+R | On a .NET Watch tab, restart that watcher. On other tabs, restart all services in the session. |
-| Ctrl+U | Show detected URLs in the NetReact tab. |
+| Ctrl+U | Return to NetReact to see service states and URLs. |
 | Ctrl+C | Stop all services and exit. |
 
 ## Other ways to run
@@ -167,9 +206,10 @@ Press **?** to open the shortcuts for the current tab. Use an empty prompt on th
 | Symptom | What to check |
 | --- | --- |
 | `devrunner.yaml` cannot be found | Run `netreact --info` to see the expected path. Open the app root or pass `--config` to `start`. |
-| npm reports a missing `package.json` or `dev` script | Check the frontend's `workingDirectory` and the `scripts` section of its manifest. Run `netreact doctor` after editing. |
+| npm reports a missing `package.json` or npm script | Check the frontend's `workingDirectory` and the `dev` or `start` script in its manifest. Run `netreact doctor` after editing. |
+| A service reports a port in use | Check its log for the requested port. Close the process using it or pick a different port in the service's launch arguments. |
 | PowerShell blocks `npm.ps1` | Use `npm.cmd` in the terminal, for example `npm.cmd install --prefix ./frontend`. Keep `command: npm` in YAML for the standard Windows Node installation. |
-| Ctrl+U is still waiting for a URL | Read the service tab for startup errors or a custom address message. NetReact recognizes the usual ASP.NET Core and Vite listening messages. |
+| Services shows No URL detected | Read the service tab for startup errors or a custom address message. NetReact recognizes the usual ASP.NET Core, Angular, and Vite listening messages. |
 | Windows denies access during a tool update | Exit running NetReact sessions with Ctrl+C, wait for the shell prompt, then retry the update from the same local package source. |
 
 ## Contributing and license
@@ -177,3 +217,7 @@ Press **?** to open the shortcuts for the current tab. Use an empty prompt on th
 For a bug report, include your OS, terminal, `netreact --info` output, and a minimal configuration. For build and verification instructions, see [Contributing](CONTRIBUTING.md). Project discussions follow the [code of conduct](CODE_OF_CONDUCT.md). Report security concerns through the [private reporting guide](SECURITY.md).
 
 NetReact DevRunner uses the [MIT license](LICENSE). The package includes [notices for its bundled libraries](THIRD-PARTY-NOTICES.md).
+
+## Supported Technologies
+
+[![.NET documentation](https://img.shields.io/badge/.NET-512BD4?style=for-the-badge&logo=dotnet&logoColor=white)](https://learn.microsoft.com/en-us/dotnet/) [![React documentation](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://react.dev/learn) [![Angular documentation](https://img.shields.io/badge/Angular-DD0031?style=for-the-badge&logo=angular&logoColor=white)](https://angular.dev/overview)

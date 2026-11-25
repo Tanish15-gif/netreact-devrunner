@@ -32,8 +32,10 @@ public static class ServiceDiagnostics
             {
                 using var sdk = Process.Start(new ProcessStartInfo(command, "--version")
                 {
-                    WorkingDirectory = directory, UseShellExecute = false,
-                    RedirectStandardOutput = true, RedirectStandardError = true
+                    WorkingDirectory = directory,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
                 })!;
                 sdk.BeginOutputReadLine();
                 sdk.BeginErrorReadLine();
@@ -45,15 +47,27 @@ public static class ServiceDiagnostics
                 if (sdk.ExitCode != 0) return "Install the .NET SDK required by this project or its global.json.";
             }
 
-            if (command.Equals("npm", StringComparison.OrdinalIgnoreCase) && service.Args is ["run", string script, ..])
+            var npmScript = service.Args switch
+            {
+                ["run", string named, ..] => named,
+                ["start", ..] => "start",
+                _ => null
+            };
+            if (command.Equals("npm", StringComparison.OrdinalIgnoreCase) && npmScript is not null)
             {
                 var manifest = Path.Combine(directory, "package.json");
                 if (!File.Exists(manifest)) return "Missing package.json. Set workingDirectory to the frontend folder.";
                 using var json = JsonDocument.Parse(File.ReadAllText(manifest));
                 if (json.RootElement.ValueKind != JsonValueKind.Object
                     || !json.RootElement.TryGetProperty("scripts", out var scripts) || scripts.ValueKind != JsonValueKind.Object
-                    || !scripts.TryGetProperty(script, out var value) || value.ValueKind != JsonValueKind.String)
-                    return $"Add the '{script}' script to package.json or change args.";
+                    || !scripts.TryGetProperty(npmScript, out var value) || value.ValueKind != JsonValueKind.String
+                    || string.IsNullOrWhiteSpace(value.GetString()))
+                {
+                    // npm start can run server.js when package.json does not define a start script.
+                    if (service.Args is ["start", ..] && File.Exists(Path.Combine(directory, "server.js")))
+                        return null;
+                    return $"Add the '{npmScript}' script to package.json or change args.";
+                }
             }
             return null;
         }
@@ -66,7 +80,8 @@ public static class ServiceDiagnostics
 
     private static bool CanResolve(string command, string directory)
     {
-        var folders = Path.IsPathRooted(command) || command.Contains(Path.DirectorySeparatorChar)
+        var folders = Path.IsPathRooted(command)
+            || command.Contains(Path.DirectorySeparatorChar)
             || command.Contains(Path.AltDirectorySeparatorChar)
             ? new[] { directory }
             : (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator);
