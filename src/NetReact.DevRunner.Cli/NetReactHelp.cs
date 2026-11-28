@@ -11,10 +11,14 @@ internal static class NetReactHelp
     public static string Shortcuts(bool watching) => $"""
         Left / Right   Switch between tabs.
         /              Search this tab's log. Esc returns to live output.
+        Mouse wheel    Scroll the active tab's logs.
+        Alt+drag       Select text in VS Code on Windows and Linux.
+        select         Pause for drag selection. Esc returns to the live display.
         Up / Down      Scroll one line.
         PgUp / PgDn    Scroll one page.
         Home / End     Jump to the oldest log or return to live output.
         Ctrl+D         Stop the selected service. Press again to start it.
+        Ctrl+B         Build the selected service (all on the NetReact tab).
         Ctrl+R         {(watching ? "Restart this .NET watcher." : "Restart all configured services.")}
         Ctrl+U         Return to NetReact to see service states and URLs.
         Ctrl+C         Stop all services and exit.

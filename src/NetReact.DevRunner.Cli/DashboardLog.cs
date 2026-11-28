@@ -6,19 +6,21 @@ namespace NetReact.DevRunner.Cli;
 internal sealed class DashboardLog
 {
     private const int LineLimit = 2000;
+    private const int RowCompactionThreshold = 2048;
     internal const int BoxWidthLimit = 86;
     internal const int MinimumBoxWidth = 12;
     internal const int BoxPaddingWidth = 4;
     private readonly Queue<Entry> _history = new();
     private readonly List<Entry> _rows = [];
     private string _filter = "";
+    private int _firstRow;
     private int _width;
     private bool _compactBoxes;
     private int? _top;
     private RenderOptions? _renderOptions;
 
     public long NextId { get; private set; }
-    public int Count => _rows.Count;
+    public int Count => _rows.Count - _firstRow;
     public bool IsFollowing => _top is null;
 
     public void Append(string text, Style style, BoxPart boxPart = BoxPart.None)
@@ -33,12 +35,17 @@ internal sealed class DashboardLog
         if (_history.Count > LineLimit)
         {
             var removed = _history.Dequeue();
-            var firstRemaining = _rows.FindIndex(row => row.Id > removed.Id);
-            var removeCount = firstRemaining < 0 ? _rows.Count : firstRemaining;
-            _rows.RemoveRange(0, removeCount);
+            var previousFirst = _firstRow;
+            while (_firstRow < _rows.Count && _rows[_firstRow].Id <= removed.Id)
+                _firstRow++;
             if (_top is int top)
             {
-                _top = Math.Max(0, top - removeCount);
+                _top = Math.Max(0, top - (_firstRow - previousFirst));
+            }
+            if (_firstRow >= RowCompactionThreshold || Count == 0)
+            {
+                _rows.RemoveRange(0, _firstRow);
+                _firstRow = 0;
             }
         }
     }
@@ -47,7 +54,7 @@ internal sealed class DashboardLog
     {
         if (query == _filter) return;
         _filter = query;
-        _rows.Clear();
+        ResetRows();
         if (_width > 0)
             foreach (var entry in _history) Wrap(entry);
         Follow();
@@ -60,11 +67,11 @@ internal sealed class DashboardLog
             return;
         }
 
-        var anchor = _top is int top && top < _rows.Count ? _rows[top].Id : (long?)null;
+        var anchor = _top is int top && top < Count ? _rows[_firstRow + top].Id : (long?)null;
         _width = width;
         _compactBoxes = compactBoxes;
         _renderOptions = new RenderOptions(AnsiConsole.Profile.Capabilities, new Size(width, int.MaxValue));
-        _rows.Clear();
+        ResetRows();
         foreach (var entry in _history)
         {
             Wrap(entry);
@@ -78,7 +85,7 @@ internal sealed class DashboardLog
 
     public int VisibleStart(int height) => Math.Min(_top ?? LastTop(height), LastTop(height));
 
-    public IEnumerable<Entry> VisibleRows(int height) => _rows.Skip(VisibleStart(height)).Take(height);
+    public IEnumerable<Entry> VisibleRows(int height) => _rows.Skip(_firstRow + VisibleStart(height)).Take(height);
 
     public void Scroll(int amount, int height)
     {
@@ -89,7 +96,7 @@ internal sealed class DashboardLog
 
     public void JumpTo(long id, int height)
     {
-        var index = _rows.FindIndex(row => row.Id >= id);
+        var index = _rows.FindIndex(_firstRow, row => row.Id >= id) - _firstRow;
         _top = index >= 0 && index < LastTop(height) ? index : null;
     }
 
@@ -98,12 +105,18 @@ internal sealed class DashboardLog
     public void Clear()
     {
         _history.Clear();
-        _rows.Clear();
+        ResetRows();
         _filter = "";
         Follow();
     }
 
-    private int LastTop(int height) => Math.Max(0, _rows.Count - height);
+    private int LastTop(int height) => Math.Max(0, Count - height);
+
+    private void ResetRows()
+    {
+        _rows.Clear();
+        _firstRow = 0;
+    }
 
     private void Wrap(Entry entry)
     {
