@@ -143,7 +143,7 @@ public sealed class InitCommand : Command
         return 0;
     }
 
-    private static (List<BackendProject> Backends, List<Frontend> Frontends) DetectFolders(string root)
+    internal static (List<BackendProject> Backends, List<Frontend> Frontends) DetectFolders(string root)
     {
         var backends = new List<BackendProject>();
         var frontends = new List<Frontend>();
@@ -196,6 +196,11 @@ public sealed class InitCommand : Command
                         {
                             frontends.Add(new Frontend(item.Directory, "start", "start"));
                         }
+                        else if (HasDependency(json.RootElement, "expo")
+                            && HasScript(scripts, "start"))
+                        {
+                            frontends.Add(new Frontend(item.Directory, "start", "start"));
+                        }
                         else if (HasScript(scripts, "dev"))
                         {
                             frontends.Add(new Frontend(item.Directory, "run dev", "run, dev"));
@@ -232,6 +237,17 @@ public sealed class InitCommand : Command
         return (backends, frontends);
     }
 
+    private static bool HasDependency(JsonElement root, string name) =>
+        HasPackage(root, "dependencies", name)
+        || HasPackage(root, "devDependencies", name);
+
+    private static bool HasPackage(JsonElement root, string section, string name) =>
+        root.TryGetProperty(section, out var packages)
+        && packages.ValueKind == JsonValueKind.Object
+        && packages.TryGetProperty(name, out var version)
+        && version.ValueKind == JsonValueKind.String
+        && !string.IsNullOrWhiteSpace(version.GetString());
+
     private static bool HasScript(JsonElement scripts, string name) =>
         scripts.TryGetProperty(name, out var script)
         && script.ValueKind == JsonValueKind.String
@@ -250,7 +266,7 @@ public sealed class InitCommand : Command
         return JsonSerializer.Serialize(path == "." ? path : "./" + path);
     }
 
-    private sealed record BackendProject(string Directory, string ProjectFile);
+    internal sealed record BackendProject(string Directory, string ProjectFile);
 
-    private sealed record Frontend(string Directory, string Command, string Arguments);
+    internal sealed record Frontend(string Directory, string Command, string Arguments);
 }

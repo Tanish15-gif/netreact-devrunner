@@ -8,7 +8,7 @@
 [![NuGet 0.7.0](https://img.shields.io/badge/NuGet-0.7.0-004880?style=flat-square)](https://www.nuget.org/packages/NetReact.DevRunner/0.7.0)
 [![License: MIT](https://img.shields.io/badge/license-MIT-237A57?style=flat-square)](LICENSE)
 
-Run an ASP.NET Core API and a React or Angular dev server from one terminal. Switch between their logs with the arrow keys, press **Ctrl+U** to see both URLs, or restart either service independently.
+Run an ASP.NET Core API and a React, Angular, or Expo frontend from one terminal. Switch between their logs with the arrow keys, press **Ctrl+U** to see both URLs, or restart either service independently.
 
 **New in 0.7.0.** Build an individual service or every service with a build command from the NetReact tab. NetReact asks before stopping a running service for a build. You can also scroll service logs with the mouse wheel and use the slimmer command prompt.
 
@@ -59,7 +59,7 @@ Portfolio/
 netreact init
 ```
 
-NetReact looks up to three folder levels deep for an ASP.NET Core web project and npm frontend projects. It detects a `dev` script or an Angular workspace with `angular.json` and a `start` script. If several frontends match, run `init` in an interactive terminal and pick one. If it prints **check this path**, set that service's `workingDirectory` yourself. If a configuration already exists, open it directly.
+NetReact looks up to three folder levels deep for an ASP.NET Core web project and npm frontend projects. It detects a `dev` script, Angular workspaces with `angular.json` and a `start` script, and Expo projects with the `expo` dependency and a `start` script. If several frontends match, run `init` in an interactive terminal and pick one. If it prints **check this path**, set that service's `workingDirectory` yourself. If a configuration already exists, open it directly.
 
 For this layout, the backend runs in `./Backend` and the frontend runs in `./frontend`. See the annotated [configuration reference](#configuration-reference) or copy the [YAML template](devrunner.example.yaml) into your application as `devrunner.yaml`.
 
@@ -80,7 +80,7 @@ Look for `Service checks passed.` The doctor checks the configuration, service d
 netreact start
 ```
 
-This runs `dotnet run` for the sample backend and `npm run dev` for its frontend. To use .NET Hot Reload, start with `netreact start --watch`. To work on the backend alone, use `netreact start backend --watch`. A supported C# edit applies when you save.
+This runs `dotnet run` for the sample backend and the configured npm script for its frontend, such as `npm run dev` or `npm start`. To use .NET Hot Reload, start with `netreact start --watch`. To work on the backend alone, use `netreact start backend --watch`. A supported C# edit applies when you save.
 
 ### Angular projects
 
@@ -102,6 +102,27 @@ netreact start
 ```
 
 Open the **Angular** tab for frontend logs. The **Services** box shows the detected URL, which is usually `http://localhost:4200/`. Use `args: [start, --, --port, "4300"]` to pass a custom port to Angular. Type `restart frontend` in the **NetReact** tab to restart Angular while the API keeps running.
+
+### Expo projects
+
+Run `netreact init` from your application root. NetReact detects Expo when a project's `package.json` includes the `expo` dependency and defines a `start` script. For a standard Expo project, the frontend entry under `services` looks like this:
+
+```yaml
+frontend:
+  workingDirectory: ./frontend
+  command: npm
+  args: [start]
+```
+
+If your Expo project is in another folder, replace `./frontend` in both `workingDirectory` and the install command. Then install dependencies and start both services:
+
+```sh
+npm install --prefix ./frontend
+netreact doctor
+netreact start
+```
+
+Open the frontend service tab for Metro bundler logs, and check the **Services** box for the detected URL. Use `args: [start, --, --port, "8082"]` to pass a custom port to Expo, or type `restart frontend` in the **NetReact** tab to restart Expo while the API keeps running.
 
 ## Configuration reference
 
