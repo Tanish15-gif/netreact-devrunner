@@ -62,7 +62,7 @@ public static class DotNetLaunch
             "Custom dotnet watch arguments require netreact start --watch. To launch without watch, configure dotnet run.");
     }
 
-    private static bool IsDotNet(ServiceConfig service)
+    public static bool IsDotNet(ServiceConfig service)
     {
         var executable = Path.GetFileNameWithoutExtension(service.Command?.Replace('\\', '/'));
         return string.Equals(executable, "dotnet", StringComparison.OrdinalIgnoreCase);

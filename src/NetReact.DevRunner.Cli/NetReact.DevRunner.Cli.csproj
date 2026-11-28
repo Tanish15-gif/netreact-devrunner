@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -8,7 +8,8 @@
     <PackAsTool>true</PackAsTool>
     <PackageId>NetReact.DevRunner</PackageId>
     <ToolCommandName>netreact</ToolCommandName>
-    <Version>0.6.0</Version>
+    <Version>0.7.1</Version>
+    <PackageReleaseNotes>Fix backend selection during init when multiple ASP.NET Core projects are found.</PackageReleaseNotes>
     <Authors>Tanish Gupta</Authors>
     <Description>Run ASP.NET Core, React, and Angular development services from one terminal.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

@@ -4,7 +4,7 @@
 
 Start your ASP.NET Core API and React or Angular dev server with one command. Each service has a scrollable log tab. Press **Ctrl+U** to see their listening addresses, or restart one service while the other keeps running.
 
-**Angular support in 0.6.0.** NetReact can detect an Angular CLI workspace, launch it alongside your ASP.NET Core API, and show its logs in a dedicated Angular tab.
+New in 0.7.1. When netreact init finds multiple ASP.NET Core projects in an interactive terminal, it lets you pick one and saves the exact .csproj in devrunner.yaml.
 
 [Install](#install) · [Set up your app](#set-up-your-own-app) · [Angular](#angular-projects) · [YAML reference](#configuration-reference) · [CLI walkthrough](#cli-walkthrough) · [Troubleshooting](#troubleshooting)
 
@@ -13,11 +13,11 @@ Start your ASP.NET Core API and React or Angular dev server with one command. Ea
 Install the .NET 10 or 11 SDK and the Node.js version your frontend requires. NetReact is a .NET tool. Install it once from your terminal:
 
 ```sh
-dotnet tool install --global NetReact.DevRunner --version 0.6.0
+dotnet tool install --global NetReact.DevRunner --version 0.7.1
 netreact --version
 ```
 
-Already installed? Close any active NetReact sessions and run `dotnet tool update --global NetReact.DevRunner --version 0.6.0`.
+Already installed? Close any active NetReact sessions and run `dotnet tool update --global NetReact.DevRunner --version 0.7.1`.
 
 ## Set up your own app
 
@@ -84,34 +84,34 @@ Each key under `services` is a name you choose. For example, `backend` is the na
 version: 1
 services:
   backend:
-    workingDirectory: ./Backend       # Folder containing the web .csproj
+    workingDirectory: ./Backend # Folder containing the web .csproj
     command: dotnet
     args: [run]
     # If your API serves this endpoint, uncomment it to enable a readiness check.
     # readyUrl: http://localhost:5083/health
 
   frontend:
-    workingDirectory: ./frontend      # Folder containing package.json
+    workingDirectory: ./frontend # Folder containing package.json
     command: npm
     args: [run, dev]
 ```
 
-| Setting | Meaning |
-| --- | --- |
-| `version` | Required. Use `1` for the configuration schema. |
+| Setting            | Meaning                                                                                                                                    |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `version`          | Required. Use `1` for the configuration schema.                                                                                            |
 | `workingDirectory` | Required for each service. The CLI launches the executable in this folder. Relative paths start at the directory containing the YAML file. |
-| `command` | Required. The executable to launch, such as `dotnet` or `npm`. |
-| `args` | Optional list of arguments in order. For a specific project, use `[run, --project, "Store API.csproj"]`. The file name is one argument. |
-| `readyUrl` | Optional HTTP or HTTPS endpoint. The first 2xx response changes the service status to **Ready**. |
+| `command`          | Required. The executable to launch, such as `dotnet` or `npm`.                                                                             |
+| `args`             | Optional list of arguments in order. For a specific project, use `[run, --project, "Store API.csproj"]`. The file name is one argument.    |
+| `readyUrl`         | Optional HTTP or HTTPS endpoint. The first 2xx response changes the service status to **Ready**.                                           |
 
 **Choosing a working directory**
 
-| Where the project lives | Value in YAML |
-| --- | --- |
-| The web `.csproj` is next to `devrunner.yaml` | `workingDirectory: .` |
-| The web project is in `src/Store.Api/` | `workingDirectory: ./src/Store.Api` |
-| The frontend manifest is in `Client App/package.json` | `workingDirectory: "./Client App"` |
-| The config is in `config/dev.yaml` and the frontend is its sibling directory `frontend/` at the app root | `workingDirectory: ../frontend` |
+| Where the project lives                                                                                  | Value in YAML                       |
+| -------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| The web `.csproj` is next to `devrunner.yaml`                                                            | `workingDirectory: .`               |
+| The web project is in `src/Store.Api/`                                                                   | `workingDirectory: ./src/Store.Api` |
+| The frontend manifest is in `Client App/package.json`                                                    | `workingDirectory: "./Client App"`  |
+| The config is in `config/dev.yaml` and the frontend is its sibling directory `frontend/` at the app root | `workingDirectory: ../frontend`     |
 
 Match the capitalization on disk so the same file works across platforms. When using `netreact start --config ./config/dev.yaml`, the CLI still resolves service paths from `config/`. Review configurations before running them because each command runs with your account's permissions.
 
@@ -150,6 +150,8 @@ The **Services** box sits below **Session activity** and shows live service stat
 
 Type `clear` or `cls` to clear the session activity while services keep running. Use `restart backend` to restart one service, `restart all` to restart every service, or `help` for all session commands. On a service tab, the footer shows **Ctrl+D** to stop or start that service.
 
+Use `build backend`, `build frontend`, or `build all` in the **NetReact** tab. **Ctrl+B** builds the selected service, or all services from the NetReact tab. NetReact uses `dotnet build` for .NET and the `npm run build` script for React and Angular. If a build target is running, NetReact asks before stopping it. Build output appears in **Session activity**, and the stopped services can be started again with **Ctrl+D** on their tabs.
+
 ```text
 Services
 .NET              Running    http://localhost:5083
@@ -164,36 +166,40 @@ Press **?** to open the shortcuts for the current tab. Use an empty prompt on th
 
 To find an earlier error, close the shortcuts panel, switch to the service tab, press **/**, and type part of the error message. Press **Esc** to resume live output. When you're done, **Ctrl+C** stops the session.
 
-| Key | Action |
-| --- | --- |
-| Left / Right | Switch tabs. |
-| Up / Down or PgUp / PgDn | Scroll the current log by line or page. |
-| Home / End | Jump to the oldest retained log or resume live output. |
-| `/` then text | Filter the current tab's logs. Esc clears the search. |
-| Ctrl+D | Stop the selected service. Press again to start it. |
-| Ctrl+R | On a .NET Watch tab, restart that watcher. On other tabs, restart all services in the session. |
-| Ctrl+U | Return to NetReact to see service states and URLs. |
-| Ctrl+C | Stop all services and exit. |
+| Key                      | Action                                                                                                                                                |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Left / Right             | Switch tabs.                                                                                                                                          |
+| Mouse wheel / trackpad   | Scroll the active tab in terminals with mouse reporting. Scroll back to the bottom or press End to resume live output.                                |
+| Alt+drag                 | Select text directly in the VS Code terminal on Windows and Linux.                                                                                    |
+| `select`                 | Pause the display and enable ordinary drag selection. Run it in the NetReact tab and press Esc to resume.                                             |
+| Up / Down or PgUp / PgDn | Scroll the current log by line or page.                                                                                                               |
+| Home / End               | Jump to the oldest retained log or resume live output.                                                                                                |
+| `/` then text            | Filter the current tab's logs. Esc clears the search.                                                                                                 |
+| Ctrl+D                   | Stop the selected service. Press again to start it.                                                                                                   |
+| Ctrl+B                   | Build the selected service, or all buildable services from the NetReact tab. Use `build` in the NetReact tab if the terminal intercepts the shortcut. |
+| Ctrl+R                   | On a .NET Watch tab, restart that watcher. On other tabs, restart all services in the session.                                                        |
+| Ctrl+U                   | Return to NetReact to see service states and URLs.                                                                                                    |
+| Ctrl+C                   | Stop all services and exit.                                                                                                                           |
 
 ## Other ways to run
 
-| Command or setting | When to use it |
-| --- | --- |
-| `netreact validate` | Check YAML and service folders before launching processes. |
+| Command or setting                            | When to use it                                                                                                    |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `netreact validate`                           | Check YAML and service folders before launching processes.                                                        |
 | `netreact start --config ./configs/demo.yaml` | Use an alternate config. Service paths are relative to that file. `doctor` and `validate` also accept `--config`. |
-| `netreact start --plain` | Keep labeled stdout and stderr in terminal scrollback. Redirecting input or output also selects this mode. |
-| `netreact start --help` | See launch options and keyboard controls from the shell. |
-| `netreact --info` | Show the tool version, runtime, OS, and default config path. |
+| `netreact start --plain`                      | Keep labeled stdout and stderr in terminal scrollback. Redirecting input or output also selects this mode.        |
+| `netreact start --help`                       | See launch options and keyboard controls from the shell.                                                          |
+| `netreact --info`                             | Show the tool version, runtime, OS, and default config path.                                                      |
 
 **Exit behavior.** In the interactive CLI you can restart a service after it exits. In plain mode the first observed service exit stops the remaining services and supplies the session exit code. Ctrl+C requests shutdown and returns 130.
 
 ## Troubleshooting
 
-| Symptom | What to check |
-| --- | --- |
-| `devrunner.yaml` cannot be found | Run `netreact --info` to see the expected path. Open the app root or pass `--config` to `start`. |
-| npm reports a missing `package.json` or npm script | Check the frontend's `workingDirectory` and the `dev` or `start` script in its manifest. Run `netreact doctor` after editing. |
-| A service reports a port in use | Check its log for the requested port. Close the process using it or pick a different port in the service's launch arguments. |
-| PowerShell blocks `npm.ps1` | Use `npm.cmd` in the terminal, for example `npm.cmd install --prefix ./frontend`. Keep `command: npm` in YAML for the standard Windows Node installation. |
-| Services shows No URL detected | Read the service tab for startup errors or a custom address message. NetReact recognizes the usual ASP.NET Core, Angular, and Vite listening messages. |
-| Windows denies access during a tool update | Exit running NetReact sessions with Ctrl+C, wait for the shell prompt, then retry the update from the same local package source. |
+| Symptom                                            | What to check                                                                                                                                             |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `devrunner.yaml` cannot be found                   | Run `netreact --info` to see the expected path. Open the app root or pass `--config` to `start`.                                                          |
+| npm reports a missing `package.json` or npm script | Check the frontend's `workingDirectory` and the `dev` or `start` script in its manifest. Run `netreact doctor` after editing.                             |
+| A service reports a port in use                    | Check its log for the requested port. Close the process using it or pick a different port in the service's launch arguments.                              |
+| PowerShell blocks `npm.ps1`                        | Use `npm.cmd` in the terminal, for example `npm.cmd install --prefix ./frontend`. Keep `command: npm` in YAML for the standard Windows Node installation. |
+| Services shows No URL detected                     | Read the service tab for startup errors or a custom address message. NetReact recognizes the usual ASP.NET Core, Angular, and Vite listening messages.    |
+| Windows denies access during a tool update         | Exit running NetReact sessions with Ctrl+C, wait for the shell prompt, then retry the update from the same local package source.                          |

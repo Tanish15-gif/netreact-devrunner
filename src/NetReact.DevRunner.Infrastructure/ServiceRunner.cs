@@ -30,6 +30,9 @@ public static class ServiceRunner
     {
         var running = new Dictionary<string, RunningService>();
         using var requestsLifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var host = serviceHostAssembly ?? System.Reflection.Assembly.GetEntryAssembly()!.Location;
+        var build = Task.CompletedTask;
+        string[] building = [];
 
         try
         {
@@ -92,7 +95,7 @@ public static class ServiceRunner
             requestsLifetime.Cancel();
             try
             {
-                await StopAsync(running.Values.ToArray(), report);
+                await Task.WhenAll(build, StopAsync(running.Values.ToArray(), report));
             }
             finally
             {
@@ -108,13 +111,9 @@ public static class ServiceRunner
             report(new(name, ServiceUpdateKind.Starting, "Starting..."));
             try
             {
-                var child = StartService(name, services[name]!, configDirectory, watch, report,
-                    serviceHostAssembly ?? System.Reflection.Assembly.GetEntryAssembly()!.Location);
+                var child = StartService(name, services[name]!, configDirectory, watch, report, host);
                 running.Add(name, child);
-                child.Process.StandardInput.BaseStream.WriteByte(1);
-                child.Process.StandardInput.Close();
-                child.Process.BeginOutputReadLine();
-                child.Process.BeginErrorReadLine();
+                ReleaseProcess(child);
                 report(new(name, ServiceUpdateKind.Started, $"Started (PID {child.Process.Id})."));
                 if (services[name]!.ReadyUrl is string url)
                 {
@@ -134,6 +133,18 @@ public static class ServiceRunner
         async Task ApplyRequestAsync(ServiceRequest request)
         {
             var targets = request.Service is null ? services.Keys.ToArray() : [request.Service];
+            if (request.Action == ServiceAction.Build)
+            {
+                await StartBuildAsync(targets, request.ApprovedStops);
+                return;
+            }
+
+            if (!build.IsCompleted && targets.Any(building.Contains))
+            {
+                report(new(null, ServiceUpdateKind.ErrorOutput, "Wait for the build to finish before starting or restarting its services."));
+                return;
+            }
+
             var selected = targets.Where(running.ContainsKey).Select(name => running[name]).ToArray();
             var startAfterStop = request.Action == ServiceAction.Restart
                 || selected.All(service => service.Process.HasExited);
@@ -157,6 +168,50 @@ public static class ServiceRunner
             }
         }
 
+        async Task StartBuildAsync(string[] targets, IReadOnlyCollection<string>? approvedStops)
+        {
+            if (!build.IsCompleted)
+            {
+                report(new(null, ServiceUpdateKind.ErrorOutput, "A build is already running."));
+                return;
+            }
+            await build;
+
+            var commands = new Dictionary<string, ServiceConfig>();
+            foreach (var name in targets)
+            {
+                if (services.TryGetValue(name, out var service) && ServiceBuild.Resolve(service!, configDirectory) is { } command)
+                    commands.Add(name, command);
+                else
+                    report(new(null, ServiceUpdateKind.ErrorOutput, $"[{name}] No build command found. .NET uses dotnet build and npm projects need a build script."));
+            }
+            if (commands.Count == 0)
+                return;
+
+            var selected = commands.Keys.Where(running.ContainsKey).Select(name => running[name]).ToArray();
+            var active = selected.Where(IsRunning).ToArray();
+            if (active.Any(service => approvedStops?.Contains(service.Name) != true))
+            {
+                var names = string.Join(", ", active.Select(service => service.Name));
+                report(new(null, ServiceUpdateKind.ErrorOutput, $"Stop {names} before building, then retry the build."));
+                return;
+            }
+
+            await StopAsync(selected, report);
+            if (selected.Any(IsRunning))
+            {
+                report(new(null, ServiceUpdateKind.ErrorOutput, "Build canceled because a service could not finish stopping."));
+                return;
+            }
+
+            foreach (var service in selected)
+                RemoveStopped(service);
+
+            cancellationToken.ThrowIfCancellationRequested();
+            building = commands.Keys.ToArray();
+            build = RunBuildsAsync(commands, configDirectory, report, host, requestsLifetime.Token);
+        }
+
         void RemoveStopped(RunningService service)
         {
             if (service.Process.HasExited)
@@ -167,6 +222,63 @@ public static class ServiceRunner
         }
     }
 
+    private static bool IsRunning(RunningService service) => !service.Process.HasExited || service.Group.IsActive();
+
+    private static void ReleaseProcess(RunningService service)
+    {
+        service.Process.StandardInput.BaseStream.WriteByte(1);
+        service.Process.StandardInput.Close();
+        service.Process.BeginOutputReadLine();
+        service.Process.BeginErrorReadLine();
+    }
+
+    private static async Task RunBuildsAsync(
+        Dictionary<string, ServiceConfig> commands, string configDirectory, Action<ServiceUpdate> report,
+        string host, CancellationToken cancellationToken)
+    {
+        try
+        {
+            foreach (var (name, config) in commands)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                report(new(null, ServiceUpdateKind.Notice, $"[{name}] Running {Path.GetFileName(config.Command)} {string.Join(' ', config.Args!)}"));
+                RunningService? process = null;
+                ServiceUpdate result;
+                try
+                {
+                    process = StartService(name, config, configDirectory, false,
+                        update => report(new(null, update.Kind, $"[{name}] {update.Message}")), host);
+                    ReleaseProcess(process);
+                    var code = await process.ExitCode.WaitAsync(cancellationToken);
+                    await process.Process.WaitForExitAsync(cancellationToken);
+                    result = code == 0
+                        ? new(null, ServiceUpdateKind.Ready, $"[{name}] Build succeeded.")
+                        : new(null, ServiceUpdateKind.Failure, $"[{name}] Build failed (exit code {code}).");
+                }
+                catch (Exception error) when (error is Win32Exception or InvalidOperationException or ArgumentException or IOException)
+                {
+                    result = new(null, ServiceUpdateKind.Failure, $"[{name}] Could not build. {error.Message}");
+                }
+                finally
+                {
+                    if (process is not null)
+                    {
+                        using (process)
+                            await StopAsync([process], update =>
+                            {
+                                if (update.Kind == ServiceUpdateKind.Failure)
+                                    report(new(null, update.Kind, $"[{name}] {update.Message}"));
+                            });
+                    }
+                }
+                report(result);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            report(new(null, ServiceUpdateKind.Notice, "Build canceled."));
+        }
+    }
 
     private static RunningService StartService(
         string name,

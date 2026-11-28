@@ -3,10 +3,11 @@ namespace NetReact.DevRunner.Infrastructure;
 public enum ServiceAction
 {
     Toggle,
-    Restart
+    Restart,
+    Build
 }
 
-public readonly record struct ServiceRequest(ServiceAction Action, string? Service);
+public readonly record struct ServiceRequest(ServiceAction Action, string? Service, IReadOnlyCollection<string>? ApprovedStops = null);
 
 public enum ServiceUpdateKind
 {
