@@ -39,7 +39,11 @@ dist/
 
 # Local development projects and machine-specific service configuration
 /examples/
-/tests/
+/tests/*
+!/tests/NetReact.DevRunner.Tests/
+/tests/NetReact.DevRunner.Tests/*
+!/tests/NetReact.DevRunner.Tests/*.cs
+!/tests/NetReact.DevRunner.Tests/*.csproj
 /devrunner.yaml
 
 # Publish output

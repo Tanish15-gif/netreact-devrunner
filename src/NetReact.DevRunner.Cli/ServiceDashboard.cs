@@ -21,7 +21,7 @@ internal sealed class ServiceDashboard
         @"\x1B(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1B]*(?:\x07|\x1B\\)|[@-_])",
         RegexOptions.NonBacktracking);
     private static readonly Regex ListeningUrl = new(
-        @"(?:Now listening on:|Local:|open your browser on)\s+(https?://\S+)", RegexOptions.NonBacktracking);
+        @"(?:Now listening on:|Local:|open your browser on|Web is waiting on|Waiting on)\s+(https?://\S+)", RegexOptions.NonBacktracking);
     private static readonly Style TitleStyle = new(new Color(111, 224, 208), decoration: Decoration.Bold);
     private static readonly Style ServiceNameStyle = new(decoration: Decoration.Bold);
     private static readonly Style MutedStyle = new(new Color(156, 171, 182));
@@ -600,8 +600,8 @@ internal sealed class ServiceDashboard
                     page.UrlLookupStarted ??= _clock.GetTimestamp();
             }
 
-            foreach (Match address in ListeningUrl.Matches(line))
-                page.Urls.Add(address.Groups[1].Value);
+            foreach (var address in DetectListeningUrls(line))
+                page.Urls.Add(address);
             if (update.Kind == ServiceUpdateKind.Ready && line.StartsWith("Ready at ", StringComparison.Ordinal))
                 page.Urls.Add(line["Ready at ".Length..]);
 
@@ -1028,4 +1028,9 @@ internal sealed class ServiceDashboard
         public int ContentWidth => Width - (Inset * 2);
         public bool HasFooter => Height >= 4;
     }
+
+    internal static IReadOnlyList<string> DetectListeningUrls(string line) =>
+        ListeningUrl.Matches(line)
+            .Select(match => match.Groups[1].Value)
+            .ToArray();
 }
