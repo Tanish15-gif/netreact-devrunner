@@ -5,11 +5,12 @@
 [![.NET 10 and 11](https://img.shields.io/badge/.NET-10%20%7C%2011-512BD4?style=flat-square)](https://dotnet.microsoft.com/download)
 [![React](https://img.shields.io/badge/frontend-React-087EA4?style=flat-square)](https://react.dev/)
 [![Angular](https://img.shields.io/badge/frontend-Angular-DD0031?style=flat-square)](https://angular.dev/)
+[![NuGet 0.7.0](https://img.shields.io/badge/NuGet-0.7.0-004880?style=flat-square)](https://www.nuget.org/packages/NetReact.DevRunner/0.7.0)
 [![License: MIT](https://img.shields.io/badge/license-MIT-237A57?style=flat-square)](LICENSE)
 
 Run an ASP.NET Core API and a React or Angular dev server from one terminal. Switch between their logs with the arrow keys, press **Ctrl+U** to see both URLs, or restart either service independently.
 
-**Angular support in 0.6.0.** NetReact can detect an Angular CLI workspace, start it alongside your ASP.NET Core API, and show its logs in a dedicated Angular tab.
+**New in 0.7.0.** Build an individual service or every service with a build command from the NetReact tab. NetReact asks before stopping a running service for a build. You can also scroll service logs with the mouse wheel and use the slimmer command prompt.
 
 [Install](#install-netreact) · [Set up your app](#set-up-your-own-app) · [Angular](#angular-projects) · [YAML reference](#configuration-reference) · [Interactive CLI](#interactive-cli) · [Troubleshooting](#troubleshooting)
 
@@ -23,24 +24,20 @@ node --version
 npm --version
 ```
 
-Once 0.6.0 is available on NuGet.org, install it from any terminal:
+Install [NetReact DevRunner 0.7.0](https://www.nuget.org/packages/NetReact.DevRunner/0.7.0) from any terminal.
 
 ```sh
-dotnet tool install --global NetReact.DevRunner --version 0.6.0
+dotnet tool install --global NetReact.DevRunner --version 0.7.0
 netreact --version
 ```
 
-If you already have NetReact installed, close any active sessions and run `dotnet tool update --global NetReact.DevRunner --version 0.6.0`.
-
-To test a local build, run these commands from the **NetReact source repository** (the folder containing `NetReact.DevRunner.slnx`):
+If you already have NetReact installed, close active sessions and run:
 
 ```sh
-dotnet pack ./src/NetReact.DevRunner.Cli/NetReact.DevRunner.Cli.csproj -c Release -o ./artifacts/nuget
-dotnet tool install --global NetReact.DevRunner --version 0.6.0 --source ./artifacts/nuget
-netreact --version
+dotnet tool update --global NetReact.DevRunner --version 0.7.0
 ```
 
-The last command should print `0.6.0`. This installation makes `netreact` available across your projects. Your application's `.csproj` needs no package reference. If you already have an older version installed, close active NetReact sessions and substitute `dotnet tool update` for `dotnet tool install` in the second command.
+The global tool exposes `netreact` across your projects. To build from the source checkout, see [Contributing](CONTRIBUTING.md).
 
 ## Set up your own app
 
@@ -166,6 +163,8 @@ The **Services** box sits below **Session activity** and shows live service stat
 
 Type `clear` or `cls` to clear the session activity while services keep running. Use `restart backend` to restart one service, `restart all` to restart every service, or `help` for all session commands. On a service tab, the footer shows **Ctrl+D** to stop or start that service.
 
+Use `build backend`, `build frontend`, or `build all` in the **NetReact** tab. **Ctrl+B** builds the selected service, or all services from the NetReact tab. NetReact uses `dotnet build` for .NET and the `npm run build` script for React and Angular. If a build target is running, NetReact asks before stopping it. Build output appears in **Session activity**, and the stopped services can be started again with **Ctrl+D** on their tabs.
+
 ```text
 Services
 .NET              Running    http://localhost:5083
@@ -181,10 +180,14 @@ Press **?** to open the shortcuts for the current tab. Use an empty prompt on th
 | Key | Action |
 | --- | --- |
 | Left / Right | Switch tabs. |
+| Mouse wheel / trackpad | Scroll the active tab in terminals with mouse reporting. Scroll back to the bottom or press End to resume live output. |
+| Alt+drag | Select text directly in the VS Code terminal on Windows and Linux. |
+| `select` | Pause the display and enable ordinary drag selection. Run it in the NetReact tab and press Esc to resume. |
 | Up / Down or PgUp / PgDn | Scroll the current log by line or page. |
 | Home / End | Jump to the oldest retained log or resume live output. |
 | `/` then text | Filter the current tab's logs. Esc clears the search. |
 | Ctrl+D | Stop the selected service. Press again to start it. |
+| Ctrl+B | Build the selected service, or all buildable services from the NetReact tab. Use `build` in the NetReact tab if the terminal intercepts the shortcut. |
 | Ctrl+R | On a .NET Watch tab, restart that watcher. On other tabs, restart all services in the session. |
 | Ctrl+U | Return to NetReact to see service states and URLs. |
 | Ctrl+C | Stop all services and exit. |
@@ -210,7 +213,7 @@ Press **?** to open the shortcuts for the current tab. Use an empty prompt on th
 | A service reports a port in use | Check its log for the requested port. Close the process using it or pick a different port in the service's launch arguments. |
 | PowerShell blocks `npm.ps1` | Use `npm.cmd` in the terminal, for example `npm.cmd install --prefix ./frontend`. Keep `command: npm` in YAML for the standard Windows Node installation. |
 | Services shows No URL detected | Read the service tab for startup errors or a custom address message. NetReact recognizes the usual ASP.NET Core, Angular, and Vite listening messages. |
-| Windows denies access during a tool update | Exit running NetReact sessions with Ctrl+C, wait for the shell prompt, then retry the update from the same local package source. |
+| Windows denies access during a tool update | Exit running NetReact sessions with Ctrl+C, wait for the shell prompt, then retry the update. |
 
 ## Contributing and license
 
